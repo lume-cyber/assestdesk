@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block content %}<a class="back" href="{% url 'detail' asset.pk %}">← {{ asset.name }}</a><h1>{{ kind|title }} record</h1><form class="panel narrow" method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.as_p }}<button class="button primary">Save</button></form>{% endblock %}

@@ -1,0 +1,13 @@
+.env
+.git
+__pycache__
+*.pyc
+*.sqlite3
+assetdesk-*.zip
+deploy_*.py
+diagnose.py
+tail_error*.py
+staticfiles
+.venv
+
+.hosting.json

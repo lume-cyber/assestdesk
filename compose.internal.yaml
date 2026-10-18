@@ -1,0 +1,5 @@
+# Use with: docker compose -f compose.yaml -f compose.internal.yaml up -d --build
+services:
+  proxy:
+    volumes:
+      - ./Caddyfile.internal:/etc/caddy/Caddyfile:ro
