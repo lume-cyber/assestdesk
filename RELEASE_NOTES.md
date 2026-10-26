@@ -1,10 +1,14 @@
-# Assetdesk 1.1.0
+# Assetdesk 1.2.0
 
-Portable self-hosted release for Python 3.12+ and Docker Compose.
+Portable self-hosted release for Python 3.9+ and Docker Compose.
 
 Included features:
 
 - Separate application accounts and multiple administrators
+- Frontend list creation and membership management
+- Super admin, General admin, General user, Auditor, and Accounts roles
+- Purchase date, value, and currency fields with finance-only editing for Accounts
+- Flexible categories for all product and asset types
 - Per-list Viewer and Editor permissions
 - Spreadsheet import from XLSX and CSV
 - Private asset pictures with authenticated access

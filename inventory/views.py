@@ -3,6 +3,7 @@ import io
 from datetime import date, datetime
 from datetime import timedelta
 from django.contrib import messages
+from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
@@ -12,9 +13,9 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
-from .access import permitted_assets, permitted_lists
-from .forms import AssetForm
-from .models import Asset, AssetEvent
+from .access import can_edit_finance, can_manage_lists, can_manage_users, permitted_assets, permitted_lists
+from .forms import AssetForm, AssetListForm, FinanceForm, ManagedUserCreateForm, ManagedUserEditForm, MembershipForm
+from .models import Asset, AssetEvent, AssetList, Membership
 
 IMPORT_FIELDS = {
     'tag': ('tag', 'asset tag', 'asset_tag'), 'name': ('name', 'asset', 'asset name'),
@@ -22,6 +23,8 @@ IMPORT_FIELDS = {
     'model': ('model',), 'serial_number': ('serial number', 'serial', 'serial_number'),
     'assigned_to': ('assigned to', 'assigned_to', 'owner'), 'location': ('location',),
     'purchase_date': ('purchase date', 'purchase_date'), 'warranty_expires': ('warranty expires', 'warranty_expires', 'warranty end'),
+    'purchase_value': ('purchase value', 'purchase_value', 'value', 'cost'),
+    'purchase_currency': ('purchase currency', 'purchase_currency', 'currency'),
     'notes': ('notes', 'description', 'comments'),
 }
 
@@ -37,6 +40,14 @@ def _date_value(value):
         try: return datetime.strptime(text, fmt).date()
         except ValueError: pass
     raise ValueError('use YYYY-MM-DD or a standard spreadsheet date')
+
+def _decimal_value(value):
+    if value in (None, ''): return None
+    from decimal import Decimal, InvalidOperation
+    try: result = Decimal(str(value).replace(',','').strip())
+    except InvalidOperation: raise ValueError('purchase value must be a number')
+    if result < 0: raise ValueError('purchase value cannot be negative')
+    return result
 
 def _rows_from_upload(upload):
     name = upload.name.lower()
@@ -83,7 +94,7 @@ def home(request):
 @never_cache
 def detail(request,pk):
     asset = get_object_or_404(permitted_assets(request.user),pk=pk)
-    return render(request,'inventory/detail.html',{'asset':asset,'can_edit':permitted_lists(request.user,True).filter(pk=asset.asset_list_id).exists(),'events':asset.events.select_related('actor')[:30]})
+    return render(request,'inventory/detail.html',{'asset':asset,'can_edit':permitted_lists(request.user,True).filter(pk=asset.asset_list_id).exists(),'can_edit_finance':can_edit_finance(request.user),'events':asset.events.select_related('actor')[:30]})
 
 @login_required
 @never_cache
@@ -126,11 +137,13 @@ def import_assets(request):
                         return row[index] if index is not None and index < len(row) else ''
                     tag, name = str(value('tag')).strip(), str(value('name')).strip()
                     if not tag or not name: raise ValueError(f'row {row_number}: Tag and Name are required')
-                    category = str(value('category') or 'Laptop').strip()
-                    category = next((v for v, label in Asset.CATEGORIES if category.lower() in (v.lower(), label.lower())), 'Other')
+                    category = str(value('category') or 'General products').strip()[:150]
                     status = str(value('status') or 'available').strip().lower().replace(' ', '_')
                     if status not in dict(Asset.STATUSES): status = 'available'
-                    asset = Asset.objects.create(asset_list=asset_list, tag=tag, name=name, category=category, status=status, manufacturer=str(value('manufacturer') or '').strip(), model=str(value('model') or '').strip(), serial_number=str(value('serial_number') or '').strip(), assigned_to=str(value('assigned_to') or '').strip(), location=str(value('location') or '').strip(), purchase_date=_date_value(value('purchase_date')), warranty_expires=_date_value(value('warranty_expires')), notes=str(value('notes') or '').strip())
+                    purchase_value = _decimal_value(value('purchase_value'))
+                    purchase_currency = str(value('purchase_currency') or '').strip().upper()[:3]
+                    if purchase_value is not None and not purchase_currency: raise ValueError(f'row {row_number}: Currency is required when Purchase value is supplied')
+                    asset = Asset.objects.create(asset_list=asset_list, tag=tag, name=name, category=category, status=status, manufacturer=str(value('manufacturer') or '').strip(), model=str(value('model') or '').strip(), serial_number=str(value('serial_number') or '').strip(), assigned_to=str(value('assigned_to') or '').strip(), location=str(value('location') or '').strip(), purchase_date=_date_value(value('purchase_date')), purchase_value=purchase_value, purchase_currency=purchase_currency, warranty_expires=_date_value(value('warranty_expires')), notes=str(value('notes') or '').strip())
                     AssetEvent.objects.create(asset=asset, actor=request.user, action='Imported from spreadsheet')
                     created += 1
             messages.success(request, f'{created} asset(s) imported into {asset_list.name}.')
@@ -149,10 +162,80 @@ def export_assets(request):
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = 'attachment; filename="assets.csv"'
     writer = csv.writer(response)
-    writer.writerow(['Tag','Asset','List','Category','Status','Serial number','Assigned to','Location','Purchase date','Warranty expires'])
+    writer.writerow(['Tag','Asset','List','Category','Status','Serial number','Assigned to','Location','Purchase date','Purchase value','Purchase currency','Warranty expires'])
     for a in filtered(request).iterator():
-        writer.writerow([csv_safe(v) for v in [a.tag,a.name,a.asset_list.name,a.get_category_display(),a.get_status_display(),a.serial_number,a.assigned_to,a.location,a.purchase_date,a.warranty_expires]])
+        writer.writerow([csv_safe(v) for v in [a.tag,a.name,a.asset_list.name,a.category,a.get_status_display(),a.serial_number,a.assigned_to,a.location,a.purchase_date,a.purchase_value,a.purchase_currency,a.warranty_expires]])
     return response
+
+@login_required
+@never_cache
+def asset_finance(request,pk):
+    if not can_edit_finance(request.user): raise PermissionDenied
+    asset=get_object_or_404(permitted_assets(request.user),pk=pk)
+    form=FinanceForm(request.POST or None,instance=asset)
+    if request.method=='POST' and form.is_valid():
+        saved=form.save(); AssetEvent.objects.create(asset=saved,actor=request.user,action='Purchase value updated')
+        messages.success(request,'Purchase information saved.'); return redirect('detail',pk=asset.pk)
+    return render(request,'inventory/finance.html',{'form':form,'asset':asset})
+
+@login_required
+@never_cache
+def lists(request):
+    if not can_manage_lists(request.user): raise PermissionDenied
+    form=AssetListForm(request.POST or None)
+    if request.method=='POST' and form.is_valid():
+        item=form.save(); messages.success(request,f'List “{item.name}” created.'); return redirect('list_manage',pk=item.pk)
+    return render(request,'inventory/lists.html',{'form':form,'asset_lists':AssetList.objects.prefetch_related('memberships').all()})
+
+@login_required
+@never_cache
+def list_manage(request,pk):
+    if not can_manage_lists(request.user): raise PermissionDenied
+    item=get_object_or_404(AssetList,pk=pk)
+    details=AssetListForm(instance=item,prefix='details')
+    member=MembershipForm(prefix='member')
+    if request.method=='POST':
+        action=request.POST.get('action')
+        if action=='details':
+            details=AssetListForm(request.POST,instance=item,prefix='details')
+            if details.is_valid(): details.save(); messages.success(request,'List details saved.'); return redirect('list_manage',pk=pk)
+        elif action=='member':
+            member=MembershipForm(request.POST,prefix='member')
+            if member.is_valid():
+                data=member.cleaned_data; Membership.objects.update_or_create(asset_list=item,user=data['user'],defaults={'role':data['role']})
+                messages.success(request,'List access saved.'); return redirect('list_manage',pk=pk)
+        elif action=='remove':
+            membership=get_object_or_404(item.memberships,pk=request.POST.get('membership'))
+            membership.delete(); messages.success(request,'List access removed.'); return redirect('list_manage',pk=pk)
+    return render(request,'inventory/list_manage.html',{'asset_list':item,'details_form':details,'member_form':member,'memberships':item.memberships.select_related('user').order_by('user__username')})
+
+@login_required
+@never_cache
+def people(request):
+    if not can_manage_users(request.user): raise PermissionDenied
+    users=User.objects.select_related('profile').order_by('username')
+    if not request.user.is_superuser: users=users.filter(is_superuser=False)
+    return render(request,'inventory/people.html',{'managed_users':users})
+
+@login_required
+@never_cache
+def user_create(request):
+    if not can_manage_users(request.user): raise PermissionDenied
+    form=ManagedUserCreateForm(request.POST or None,manager=request.user)
+    if request.method=='POST' and form.is_valid():
+        user=form.save(); messages.success(request,f'Account “{user.username}” created.'); return redirect('user_edit',pk=user.pk)
+    return render(request,'inventory/user_form.html',{'form':form,'target':None})
+
+@login_required
+@never_cache
+def user_edit(request,pk):
+    if not can_manage_users(request.user): raise PermissionDenied
+    target=get_object_or_404(User.objects.select_related('profile'),pk=pk)
+    if target.is_superuser and not request.user.is_superuser: raise PermissionDenied
+    form=ManagedUserEditForm(request.POST or None,manager=request.user,target=target)
+    if request.method=='POST' and form.is_valid():
+        form.save(); messages.success(request,'Account saved.'); return redirect('people')
+    return render(request,'inventory/user_form.html',{'form':form,'target':target})
 
 from .forms import PhotoForm, ServiceForm, AssignmentForm
 from .models import AssignmentRecord

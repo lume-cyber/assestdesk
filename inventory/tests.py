@@ -1,6 +1,6 @@
 from django.contrib.auth.models import User
 from django.test import TestCase, Client, override_settings
-from .models import AssetList, Asset, Membership, AssetEvent
+from .models import AssetList, Asset, Membership, AssetEvent, UserProfile
 from .access import permitted_lists
 
 @override_settings(SECURE_SSL_REDIRECT=False,STORAGES={'default':{'BACKEND':'django.core.files.storage.FileSystemStorage'},'staticfiles':{'BACKEND':'django.contrib.staticfiles.storage.StaticFilesStorage'}})
@@ -71,8 +71,9 @@ class AccessTests(TestCase):
     def test_admin_and_nonadmin_access(self):
         self.client.force_login(self.admin)
         self.assertEqual(self.client.get('/').context['total'],2)
-        for path in ['/admin/','/admin/auth/user/','/admin/inventory/assetlist/','/assets/new/']:
+        for path in ['/admin/','/admin/auth/user/','/lists/','/people/','/assets/new/']:
             self.assertEqual(self.client.get(path).status_code,200)
+        self.assertEqual(self.client.get('/admin/inventory/assetlist/').status_code,404)
         self.viewer.is_staff=True; self.viewer.save()
         self.client.force_login(self.viewer)
         self.assertEqual(self.client.get('/admin/').status_code,302)
@@ -114,3 +115,47 @@ class ProxyTests(TestCase):
             self.assertEqual(client_ip(request),'192.0.2.1')
         with patch.dict('os.environ',{'TRUST_PROXY':'1'}):
             self.assertEqual(client_ip(request),'198.51.100.2')
+
+@override_settings(SECURE_SSL_REDIRECT=False,STORAGES={'default':{'BACKEND':'django.core.files.storage.FileSystemStorage'},'staticfiles':{'BACKEND':'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+class RoleAndListTests(TestCase):
+    def setUp(self):
+        self.superadmin=User.objects.create_superuser('root',password='StrongPassword!982')
+        self.general_admin=User.objects.create_user('manager',password='StrongPassword!982')
+        self.auditor=User.objects.create_user('audit',password='StrongPassword!982')
+        self.accounts=User.objects.create_user('accounts',password='StrongPassword!982')
+        self.user=User.objects.create_user('user',password='StrongPassword!982')
+        UserProfile.objects.create(user=self.general_admin,role='general_admin')
+        UserProfile.objects.create(user=self.auditor,role='auditor')
+        UserProfile.objects.create(user=self.accounts,role='accounts')
+        UserProfile.objects.create(user=self.user,role='general_user')
+        self.list=AssetList.objects.create(name='All products')
+        self.asset=Asset.objects.create(asset_list=self.list,tag='FUR-1',name='Office chair',category='Furniture')
+    def test_general_admin_creates_lists_and_non_super_accounts(self):
+        self.client.force_login(self.general_admin)
+        self.assertEqual(self.client.post('/lists/',{'name':'Warehouse','description':'Stock'}).status_code,302)
+        self.assertTrue(AssetList.objects.filter(name='Warehouse').exists())
+        data={'username':'newaudit','role':'auditor','password1':'VeryStrongPassword!456','password2':'VeryStrongPassword!456'}
+        self.assertEqual(self.client.post('/people/new/',data).status_code,302)
+        self.assertEqual(User.objects.get(username='newaudit').profile.role,'auditor')
+        self.assertEqual(self.client.get(f'/people/{self.superadmin.pk}/').status_code,403)
+    def test_auditor_reads_everything_but_cannot_write(self):
+        self.client.force_login(self.auditor)
+        self.assertContains(self.client.get('/'),'Office chair')
+        self.assertEqual(self.client.get('/lists/').status_code,403)
+        self.assertEqual(self.client.get('/assets/new/').status_code,403)
+        self.assertEqual(self.client.get(f'/assets/{self.asset.pk}/finance/').status_code,403)
+    def test_accounts_can_only_update_purchase_information(self):
+        self.client.force_login(self.accounts)
+        self.assertEqual(self.client.get(f'/assets/{self.asset.pk}/edit/').status_code,404)
+        self.assertEqual(self.client.post(f'/assets/{self.asset.pk}/finance/',{'purchase_date':'2026-01-02','purchase_value':'325.50','purchase_currency':'CAD'}).status_code,302)
+        self.asset.refresh_from_db(); self.assertEqual(str(self.asset.purchase_value),'325.50'); self.assertEqual(self.asset.purchase_currency,'CAD')
+    def test_general_user_remains_list_scoped(self):
+        self.client.force_login(self.user)
+        self.assertNotContains(self.client.get('/'),'Office chair')
+        Membership.objects.create(user=self.user,asset_list=self.list,role='viewer')
+        self.assertContains(self.client.get('/'),'Office chair')
+    def test_category_and_value_accept_non_it_products(self):
+        self.client.force_login(self.general_admin)
+        data={'tag':'APP-1','name':'Winter coat','asset_list':self.list.pk,'category':'Apparel & Accessories','status':'available','purchase_value':'120.00','purchase_currency':'CAD'}
+        self.assertEqual(self.client.post('/assets/new/',data).status_code,302)
+        asset=Asset.objects.get(tag='APP-1'); self.assertEqual(asset.category,'Apparel & Accessories'); self.assertEqual(str(asset.purchase_value),'120.00')

@@ -1,6 +1,6 @@
 # Assetdesk deployment guide
 
-Assetdesk runs on Python 3.12 or newer. It can be deployed on any host that supports either Docker Compose or a persistent Python WSGI application. A static-only website host cannot run it because accounts, permissions, uploads, and records require server-side Python and a persistent database.
+Assetdesk runs on Python 3.9 or newer. It can be deployed on any host that supports either Docker Compose or a persistent Python WSGI application. A static-only website host cannot run it because accounts, permissions, uploads, and records require server-side Python and a persistent database.
 
 ## Docker Compose
 

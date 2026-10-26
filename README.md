@@ -1,15 +1,16 @@
 # Assetdesk
 
-A web application for tracking organizational IT equipment, with separate username/password accounts and server-enforced access to asset lists.
+A web application for tracking any organizational product or asset, with separate username/password accounts, role-based controls, and server-enforced access to asset lists.
 
 For application workflows and role instructions, see [USER_GUIDE.md](USER_GUIDE.md).
 
 ## Included
 
 - Searchable asset register, filters, pagination, and CSV exports.
-- Equipment tags, serial numbers, category, assignee, location, purchase and warranty dates, notes, and lifecycle status.
+- Tags, serial numbers, flexible product category, assignee, location, purchase date/value/currency, warranty, notes, and lifecycle status.
 - Asset lists with independent Viewer or Editor access per user.
-- Administrators manage accounts, lists, and memberships through the administration screens.
+- Super admins and general admins manage accounts, lists, and memberships from the main website.
+- General users retain per-list Viewer/Editor access; Auditors can read/export all lists; Accounts can read/export all lists and update purchase values.
 - Editors register and update assets only within their authorized lists. Viewers have read/export access only. Users without memberships see no assets. Administrators see all assets.
 - Audit history for asset creation and edits; Django administration logs account and permission changes.
 - XLSX/CSV import into permitted lists, private asset pictures, service history, and assignment/return history.
@@ -17,7 +18,7 @@ For application workflows and role instructions, see [USER_GUIDE.md](USER_GUIDE.
 
 ## Deployment choices
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for Docker Compose, cPanel/Passenger, and ordinary WSGI hosting. The package supports Python 3.12+ hosts with persistent storage. Static-only website hosting cannot run this application.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for Docker Compose, cPanel/Passenger, and ordinary WSGI hosting. The package supports Python 3.9+ hosts with persistent storage. Static-only website hosting cannot run this application.
 
 ## cPanel shared hosting
 
@@ -50,9 +51,9 @@ The Docker image uses Linux containers. A Windows Server deployment requires a s
 
 ## First-time administration
 
-1. Select **Lists & access** and add a list (for example, Office IT or Finance equipment).
-2. Select **People** and add employee accounts. Set passwords and save; add names and email addresses on the subsequent edit screen. Leave **Staff status** and **Superuser status** unchecked for ordinary employees. Only superusers can enter administration.
-3. Edit each list and add user memberships: Viewer for reading/exporting; Editor for creating/updating. One person can have different permissions on different lists.
+1. Select **Lists** and use the form to add a list (for example, Office assets or Finance records).
+2. Select **People**, create each employee account, and choose General admin, General user, Auditor, or Accounts. Only a super admin can create another super admin.
+3. For general users, open each list and add Viewer or Editor access. One person can have different permissions on different lists.
 4. Return to **Asset register** and choose **Add asset**. The selected list determines who can see it. Assigning an employee name does not grant that employee access.
 5. Employees sign in with their own account and change their password from the sidebar.
 
@@ -62,7 +63,7 @@ To remove equipment from active use, change its status to **Retired**. There is 
 
 ## Local development
 
-Use Python 3.12+:
+Use Python 3.9+:
 
 ```sh
 python3 -m venv .venv

@@ -1,5 +1,21 @@
 from django.conf import settings
 from django.db import models
+
+class UserProfile(models.Model):
+    GENERAL_ADMIN = 'general_admin'
+    GENERAL_USER = 'general_user'
+    AUDITOR = 'auditor'
+    ACCOUNTS = 'accounts'
+    ROLES = [
+        (GENERAL_ADMIN, 'General admin'),
+        (GENERAL_USER, 'General user'),
+        (AUDITOR, 'Auditor'),
+        (ACCOUNTS, 'Accounts'),
+    ]
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='profile')
+    role = models.CharField(max_length=20, choices=ROLES, default=GENERAL_USER)
+    def __str__(self): return f'{self.user} · {self.get_role_display()}'
+
 class AssetList(models.Model):
     name = models.CharField(max_length=100,unique=True)
     description = models.CharField(max_length=240,blank=True)
@@ -14,12 +30,12 @@ class Membership(models.Model):
         constraints = [models.UniqueConstraint(fields=['user','asset_list'],name='unique_list_member')]
     def __str__(self): return f'{self.user} · {self.asset_list} · {self.role}'
 class Asset(models.Model):
-    CATEGORIES = [('Laptop','Laptop'),('Desktop','Desktop'),('Monitor','Monitor'),('Server','Server'),('Network','Network equipment'),('Printer','Printer'),('Phone','Phone'),('Other','Other')]
+    CATEGORY_SUGGESTIONS = ['Apparel & Accessories','Arts & Entertainment','Baby & Toddler','Business & Industrial','Cameras & Optics','Electronics','Food, Beverages & Tobacco','Furniture','Hardware','Health & Beauty','Home & Garden','Luggage & Bags','Office Supplies','Software','Sporting Goods','Toys & Games','Vehicles & Parts','Other']
     STATUSES = [('available','Available'),('assigned','Assigned'),('repair','In repair'),('retired','Retired')]
     asset_list = models.ForeignKey(AssetList,on_delete=models.PROTECT,related_name='assets')
     tag = models.CharField(max_length=50,unique=True)
     name = models.CharField(max_length=150)
-    category = models.CharField(max_length=20,choices=CATEGORIES,default='Laptop')
+    category = models.CharField(max_length=150, default='General products')
     status = models.CharField(max_length=15,choices=STATUSES,default='available')
     manufacturer = models.CharField(max_length=100,blank=True)
     model = models.CharField(max_length=100,blank=True)
@@ -27,6 +43,8 @@ class Asset(models.Model):
     assigned_to = models.CharField(max_length=150,blank=True,help_text='Employee name or email; this does not grant access.')
     location = models.CharField(max_length=150,blank=True)
     purchase_date = models.DateField(null=True,blank=True)
+    purchase_value = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    purchase_currency = models.CharField(max_length=3, blank=True, help_text='Currency code, e.g. CAD, USD or BDT')
     warranty_expires = models.DateField(null=True,blank=True)
     notes = models.TextField(blank=True,max_length=5000)
     photo_data = models.BinaryField(blank=True, default=bytes)

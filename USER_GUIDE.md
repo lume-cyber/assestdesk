@@ -1,29 +1,32 @@
 # Assetdesk user guide
 
-Version 1.1.0
+Version 1.2.0
 
-Assetdesk is a private web application for recording an organization’s IT equipment. It combines an asset register with list-based access, spreadsheet imports, private pictures, service records, assignment history, and an activity log.
+Assetdesk is a private web application for recording any type of organizational product or asset. It combines a flexible asset register with role- and list-based access, purchase values, spreadsheet imports, private pictures, service records, assignment history, and an activity log.
 
-This guide is for three audiences:
+This guide covers these account types:
 
-- **Viewers** who search, review, and export assets in permitted lists.
-- **Editors** who also add and update assets and their records in permitted lists.
-- **Administrators** who manage the whole application, including users, lists, and access.
+- **Super admins** manage the entire site, every account, roles, lists, privileges, and maintenance administration.
+- **General admins** manage every list and all non-super-admin accounts.
+- **General users** receive Viewer or Editor permission on individual lists.
+- **Auditors** have read and export access to every list, but cannot modify records.
+- **Accounts** users have read and export access to every list and can update purchase date, value, and currency.
 
 ## 1. Roles and access
 
 Access is granted by asset list. A list can represent a department, site, company, security boundary, or other grouping such as “Head Office,” “Finance,” or “Warehouse.”
 
-| Capability | Viewer | Editor | Administrator |
-| --- | --- | --- | --- |
-| See assets in an assigned list | Yes | Yes | All lists |
-| Search and filter accessible assets | Yes | Yes | Yes |
-| Export accessible asset rows | Yes | Yes | Yes |
-| Add or edit assets | No | Assigned lists | All lists |
-| Import spreadsheets | No | Assigned lists | All lists |
-| Manage pictures, service records, and user history | No | Assigned lists | All lists |
-| Create users and lists | No | No | Yes |
-| Grant or revoke access | No | No | Yes |
+| Capability | General user (Viewer) | General user (Editor) | Auditor | Accounts | General admin | Super admin |
+| --- | --- | --- | --- | --- | --- | --- |
+| See assets | Assigned lists | Assigned lists | All lists | All lists | All lists | All lists |
+| Export | Assigned lists | Assigned lists | All lists | All lists | All lists | All lists |
+| Add/edit operational details | No | Assigned lists | No | No | All lists | All lists |
+| Edit purchase value | No | Assigned lists | No | All lists | All lists | All lists |
+| Import spreadsheets | No | Assigned lists | No | No | All lists | All lists |
+| Manage pictures/service/user history | No | Assigned lists | No | No | All lists | All lists |
+| Manage lists and access | No | No | No | No | Yes | Yes |
+| Manage non-super accounts | No | No | No | No | Yes | Yes |
+| Manage super admins/site maintenance | No | No | No | No | No | Yes |
 
 An Editor role on one list does not give access to another list. A user can be a Viewer on one list and an Editor on another. Users without any memberships see no assets. Administrators are superusers and have organization-wide access.
 
@@ -55,7 +58,7 @@ The summary cards show:
 - **Available:** assets ready for assignment.
 - **Warranty ending:** non-retired assets whose warranty ends within the next 30 days.
 
-The equipment table shows each asset’s name, tag, category, status, current assignee, location, list, and warranty date. Select an asset name to open its details.
+The table shows each asset’s name, tag, category, status, purchase value, current assignee, location, list, and warranty date. Select an asset name to open its details.
 
 ### Search and filters
 
@@ -76,6 +79,8 @@ Select **Export CSV** to download the rows matching the current search and filte
 - Assigned to
 - Location
 - Purchase date
+- Purchase value
+- Purchase currency
 - Warranty expiration
 
 The export does not include pictures, notes, service history, user history, or the activity log. Your access rules also apply to exports; inaccessible lists cannot be exported.
@@ -89,13 +94,15 @@ Editors and administrators can select **Add asset**. Complete the form and selec
 | Tag | Unique organization-wide identifier, such as `IT-00421` |
 | Name | Clear equipment name, such as `Accounts laptop` |
 | Asset list | Determines who can see and edit the asset |
-| Category | Laptop, Desktop, Monitor, Server, Network equipment, Printer, Phone, or Other |
+| Category | Any product category; suggestions cover common organization and retail categories |
 | Status | Available, Assigned, In repair, or Retired |
 | Manufacturer and Model | Hardware identification |
 | Serial number | Manufacturer serial number |
 | Assigned to | Current employee name or email; required when status is Assigned |
 | Location | Office, floor, room, rack, branch, or other useful location |
 | Purchase date | Acquisition date |
+| Purchase value | Original purchased value; cannot be negative |
+| Purchase currency | Three-letter code such as `CAD`, `USD`, or `BDT`; required when value is entered |
 | Warranty expires | Warranty end date; cannot precede purchase date |
 | Notes | Additional operational information, up to 5,000 characters |
 
@@ -134,12 +141,16 @@ Supported optional headings are:
 - Assigned to or Owner
 - Location
 - Purchase date
+- Purchase value or Value
+- Purchase currency or Currency
 - Warranty expires or Warranty end
 - Notes, Description, or Comments
 
 Column headings are not case-sensitive. Extra columns are ignored. Blank rows are skipped.
 
-Use one of these category values: `Laptop`, `Desktop`, `Monitor`, `Server`, `Network`, `Network equipment`, `Printer`, `Phone`, or `Other`. Unrecognized categories are imported as Other.
+Category is flexible: enter any category appropriate to the product. Examples include `Electronics`, `Furniture`, `Apparel & Accessories`, `Office Supplies`, and `Vehicles & Parts`. Blank categories become `General products`.
+
+When Purchase value is present, include a three-letter Purchase currency code. Values must be zero or greater.
 
 Use these status values: `available`, `assigned`, `repair`, or `retired`. Unrecognized or blank statuses become Available.
 
@@ -216,37 +227,39 @@ Assets already assigned when assignment history was introduced have a generated 
 
 ## 10. Administrator guide
 
-Administrators see **Lists & access** and **People** in the sidebar. Administrator accounts are Django superusers and can see every asset and list.
+Super admins and general admins see **Lists** and **People** in the sidebar. Both can see every asset and list. A general admin cannot view, edit, disable, or create a super-admin account.
 
 ### Create a user
 
 1. Select **People**.
-2. Select **Add user**.
-3. Enter a username and temporary password, then save.
-4. Open the new user and add their name and email if required.
-5. Leave **Staff status** and **Superuser status** disabled for ordinary users.
-6. Ensure **Active** is enabled.
-7. Save, then assign the user to the required lists.
+2. Select **Create account**.
+3. Enter a username, optional name and email, and a temporary password.
+4. Choose General admin, General user, Auditor, or Accounts.
+5. Save. For a General user, assign Viewer or Editor access on the required lists.
 
 Deliver temporary credentials through a trusted channel and have the user change the password after signing in.
 
 ### Create another administrator
 
-Follow the user steps, then enable **Staff status** and **Superuser status** for the account. Superuser status gives full organization-wide access, so grant it only to authorized administrators. Keep at least two working administrator accounts to reduce lockout risk, with each administrator using a separate account.
+Sign in as a super admin, follow the account-creation steps, and select **Super admin**. General admins do not see this option. Super-admin access gives full site-wide control, so grant it only to authorized maintainers. Assetdesk prevents disabling or demoting the last active super admin. Keep at least two working super-admin accounts to reduce lockout risk.
 
 ### Create a list and grant access
 
-1. Select **Lists & access**.
-2. Add or open an asset list.
-3. Enter its name and description.
-4. In the membership rows, choose each user and their Viewer or Editor role.
-5. Save.
+1. Select **Lists**.
+2. Complete the **Create a list** form with a unique name and optional description.
+3. Open the new list.
+4. Under **Add or update access**, choose a General user and Viewer or Editor.
+5. Save access. Repeating this for the same person updates their permission.
 
 Changes take effect immediately. Removing a membership removes that user’s access to the list. Deactivating a user prevents sign-in. Avoid using superuser status as a substitute for list membership when the person only needs selected lists.
 
 ### Reset a password
 
-Open **People**, select the user, and use the password-change control in the administration page. Share the new temporary password securely. Administrators cannot view an existing password because passwords are stored as hashes.
+Open **People**, select the user, enter and confirm a new password, then save. Share the temporary password securely. Administrators cannot view an existing password because passwords are stored as hashes.
+
+### Accounts purchase-value workflow
+
+Accounts users can open any asset and select **Purchase value**. They can change purchase date, value, and currency without receiving permission to alter tags, status, assignments, pictures, service history, or other operational data.
 
 ### Review activity
 
