@@ -1,5 +1,7 @@
 # Assetdesk
 
+Current local release: **26.10**
+
 A web application for tracking any organizational product or asset, with separate username/password accounts, role-based controls, and server-enforced access to asset lists.
 
 For application workflows and role instructions, see [USER_GUIDE.md](USER_GUIDE.md).
@@ -8,12 +10,14 @@ For application workflows and role instructions, see [USER_GUIDE.md](USER_GUIDE.
 
 - Searchable asset register, filters, pagination, and CSV exports.
 - Tags, serial numbers, flexible product category, assignee, location, purchase date/value/currency, warranty, notes, and lifecycle status.
-- Asset lists with independent Viewer or Editor access per user.
+- A default General Assets group plus independent Viewer or Editor access for restricted Access Groups.
+- Preloaded garment, bag and factory categories, including Shopify-compatible product paths and internal manufacturing categories.
 - Super admins and general admins manage accounts, lists, and memberships from the main website.
 - General users retain per-list Viewer/Editor access; Auditors can read/export all lists; Accounts can read/export all lists and update purchase values.
 - Editors register and update assets only within their authorized lists. Viewers have read/export access only. Users without memberships see no assets. Administrators see all assets.
 - Audit history for asset creation and edits; Django administration logs account and permission changes.
 - XLSX/CSV import into permitted lists, private asset pictures, service history, and assignment/return history.
+- Optional import tags with validated prefix-based generation for legacy spreadsheets.
 - Password hashing, CSRF protection, secure session cookies, HTTPS, password changes, and database-backed login throttling (five failures, fifteen-minute cooldown).
 
 ## Deployment choices
@@ -101,3 +105,7 @@ Store backups encrypted outside the server and test restoration. Stop the app be
 ## Scope and hosting
 
 This release supports one organization, one application instance, list-based permissions, spreadsheet imports, private asset pictures, service records, and assignment history. It does not include SSO, MFA, email invitations, barcode scanning, or a tamper-proof audit store. Database administrators can modify stored audit data.
+
+## Product taxonomy
+
+Version 26.10 includes a locally stored, curated set of Shopify-compatible product category paths together with factory-specific categories for garment and bag manufacturing. It does not contact Shopify while the application is running. Users can select a standard category or enter a custom category. Shopify's Standard Product Taxonomy is available under the MIT License: https://github.com/Shopify/product-taxonomy

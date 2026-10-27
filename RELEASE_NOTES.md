@@ -1,4 +1,4 @@
-# Assetdesk 1.2.0
+# Assetdesk 26.10
 
 Portable self-hosted release for Python 3.9+ and Docker Compose.
 
@@ -9,6 +9,10 @@ Included features:
 - Super admin, General admin, General user, Auditor, and Accounts roles
 - Purchase date, value, and currency fields with finance-only editing for Accounts
 - Flexible categories for all product and asset types
+- Preloaded garment, bag and factory category catalogue with Shopify-compatible paths
+- General Assets default group and simplified restricted Access Groups
+- Factory and department fields for manufacturing operations
+- Optional spreadsheet Tag column with controlled sequential tag generation
 - Per-list Viewer and Editor permissions
 - Spreadsheet import from XLSX and CSV
 - Private asset pictures with authenticated access

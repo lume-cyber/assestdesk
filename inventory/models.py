@@ -19,8 +19,20 @@ class UserProfile(models.Model):
 class AssetList(models.Model):
     name = models.CharField(max_length=100,unique=True)
     description = models.CharField(max_length=240,blank=True)
+    is_default = models.BooleanField(default=False, help_text='Default access group for unrestricted assets.')
     class Meta: ordering = ['name']
     def __str__(self): return self.name
+
+class ProductCategory(models.Model):
+    SHOPIFY, INTERNAL = 'shopify', 'internal'
+    SOURCES = [(SHOPIFY, 'Shopify Product Taxonomy'), (INTERNAL, 'Factory taxonomy')]
+    name = models.CharField(max_length=150)
+    path = models.CharField(max_length=500, unique=True)
+    source = models.CharField(max_length=20, choices=SOURCES, default=INTERNAL)
+    external_id = models.CharField(max_length=80, blank=True)
+    active = models.BooleanField(default=True)
+    class Meta: ordering = ['path']
+    def __str__(self): return self.path
 class Membership(models.Model):
     VIEWER, EDITOR = 'viewer', 'editor'
     user = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE)
@@ -42,6 +54,8 @@ class Asset(models.Model):
     serial_number = models.CharField(max_length=100,blank=True)
     assigned_to = models.CharField(max_length=150,blank=True,help_text='Employee name or email; this does not grant access.')
     location = models.CharField(max_length=150,blank=True)
+    factory = models.CharField(max_length=150,blank=True)
+    department = models.CharField(max_length=150,blank=True)
     purchase_date = models.DateField(null=True,blank=True)
     purchase_value = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     purchase_currency = models.CharField(max_length=3, blank=True, help_text='Currency code, e.g. CAD, USD or BDT')

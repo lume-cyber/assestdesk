@@ -1,5 +1,6 @@
 import csv
 import io
+import re
 from datetime import date, datetime
 from datetime import timedelta
 from django.contrib import messages
@@ -22,6 +23,7 @@ IMPORT_FIELDS = {
     'category': ('category', 'type'), 'status': ('status',), 'manufacturer': ('manufacturer', 'brand'),
     'model': ('model',), 'serial_number': ('serial number', 'serial', 'serial_number'),
     'assigned_to': ('assigned to', 'assigned_to', 'owner'), 'location': ('location',),
+    'factory': ('factory', 'site', 'unit'), 'department': ('department', 'dept'),
     'purchase_date': ('purchase date', 'purchase_date'), 'warranty_expires': ('warranty expires', 'warranty_expires', 'warranty end'),
     'purchase_value': ('purchase value', 'purchase_value', 'value', 'cost'),
     'purchase_currency': ('purchase currency', 'purchase_currency', 'currency'),
@@ -67,14 +69,27 @@ def _rows_from_upload(upload):
     for field, aliases in IMPORT_FIELDS.items():
         for alias in aliases:
             if alias in normalized: mapping[field] = normalized.index(alias); break
-    if 'tag' not in mapping or 'name' not in mapping:
-        raise ValueError('the first row must include Tag and Asset/Name columns')
+    if 'name' not in mapping:
+        raise ValueError('the first row must include an Asset or Name column; Tag is optional')
     return mapping, rows
+
+def _tag_generator(prefix):
+    prefix=prefix.strip().upper()
+    if not re.fullmatch(r'[A-Z0-9][A-Z0-9-]{0,19}',prefix):
+        raise ValueError('tag prefix must be 1–20 letters, numbers or hyphens')
+    pattern=re.compile(rf'^{re.escape(prefix)}-(\d+)$')
+    highest=0
+    for tag in Asset.objects.filter(tag__startswith=f'{prefix}-').values_list('tag',flat=True):
+        match=pattern.match(tag)
+        if match: highest=max(highest,int(match.group(1)))
+    while True:
+        highest+=1
+        yield f'{prefix}-{highest:06d}'
 
 def filtered(request):
     items = permitted_assets(request.user)
     q = request.GET.get('q','').strip()[:150]
-    if q: items = items.filter(Q(name__icontains=q)|Q(tag__icontains=q)|Q(serial_number__icontains=q)|Q(assigned_to__icontains=q))
+    if q: items = items.filter(Q(name__icontains=q)|Q(tag__icontains=q)|Q(category__icontains=q)|Q(serial_number__icontains=q)|Q(assigned_to__icontains=q)|Q(factory__icontains=q)|Q(department__icontains=q)|Q(location__icontains=q))
     list_id = request.GET.get('list','')
     if list_id:
         items = items.filter(asset_list_id=list_id) if list_id.isdigit() else items.none()
@@ -128,7 +143,10 @@ def import_assets(request):
         asset_list = get_object_or_404(writable, pk=request.POST.get('asset_list'))
         try:
             mapping, rows = _rows_from_upload(request.FILES.get('file'))
-            created = 0
+            missing_mode=request.POST.get('missing_tags','generate')
+            if missing_mode not in ('generate','reject'): raise ValueError('choose how missing tags should be handled')
+            generated_tags=_tag_generator(request.POST.get('tag_prefix','AST')) if missing_mode=='generate' else None
+            created = generated = 0
             with transaction.atomic():
                 for row_number, row in enumerate(rows, start=2):
                     if not any(str(v or '').strip() for v in row): continue
@@ -136,17 +154,21 @@ def import_assets(request):
                         index = mapping.get(field)
                         return row[index] if index is not None and index < len(row) else ''
                     tag, name = str(value('tag')).strip(), str(value('name')).strip()
-                    if not tag or not name: raise ValueError(f'row {row_number}: Tag and Name are required')
+                    if not name: raise ValueError(f'row {row_number}: Name is required')
+                    if not tag:
+                        if missing_mode=='reject': raise ValueError(f'row {row_number}: Tag is missing')
+                        tag=next(generated_tags); generated+=1
                     category = str(value('category') or 'General products').strip()[:150]
                     status = str(value('status') or 'available').strip().lower().replace(' ', '_')
                     if status not in dict(Asset.STATUSES): status = 'available'
                     purchase_value = _decimal_value(value('purchase_value'))
                     purchase_currency = str(value('purchase_currency') or '').strip().upper()[:3]
                     if purchase_value is not None and not purchase_currency: raise ValueError(f'row {row_number}: Currency is required when Purchase value is supplied')
-                    asset = Asset.objects.create(asset_list=asset_list, tag=tag, name=name, category=category, status=status, manufacturer=str(value('manufacturer') or '').strip(), model=str(value('model') or '').strip(), serial_number=str(value('serial_number') or '').strip(), assigned_to=str(value('assigned_to') or '').strip(), location=str(value('location') or '').strip(), purchase_date=_date_value(value('purchase_date')), purchase_value=purchase_value, purchase_currency=purchase_currency, warranty_expires=_date_value(value('warranty_expires')), notes=str(value('notes') or '').strip())
+                    asset = Asset.objects.create(asset_list=asset_list, tag=tag, name=name, category=category, status=status, manufacturer=str(value('manufacturer') or '').strip(), model=str(value('model') or '').strip(), serial_number=str(value('serial_number') or '').strip(), assigned_to=str(value('assigned_to') or '').strip(), factory=str(value('factory') or '').strip(), department=str(value('department') or '').strip(), location=str(value('location') or '').strip(), purchase_date=_date_value(value('purchase_date')), purchase_value=purchase_value, purchase_currency=purchase_currency, warranty_expires=_date_value(value('warranty_expires')), notes=str(value('notes') or '').strip())
                     AssetEvent.objects.create(asset=asset, actor=request.user, action='Imported from spreadsheet')
                     created += 1
-            messages.success(request, f'{created} asset(s) imported into {asset_list.name}.')
+            generated_note=f' {generated} missing tag(s) were generated automatically.' if generated else ''
+            messages.success(request, f'{created} asset(s) imported into {asset_list.name}.{generated_note}')
             return redirect('home')
         except Exception as exc:
             messages.error(request, f'Import stopped: {exc}')
@@ -162,9 +184,9 @@ def export_assets(request):
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = 'attachment; filename="assets.csv"'
     writer = csv.writer(response)
-    writer.writerow(['Tag','Asset','List','Category','Status','Serial number','Assigned to','Location','Purchase date','Purchase value','Purchase currency','Warranty expires'])
+    writer.writerow(['Tag','Asset','Access Group','Category','Status','Serial number','Assigned to','Factory','Department','Location','Purchase date','Purchase value','Purchase currency','Warranty expires'])
     for a in filtered(request).iterator():
-        writer.writerow([csv_safe(v) for v in [a.tag,a.name,a.asset_list.name,a.category,a.get_status_display(),a.serial_number,a.assigned_to,a.location,a.purchase_date,a.purchase_value,a.purchase_currency,a.warranty_expires]])
+        writer.writerow([csv_safe(v) for v in [a.tag,a.name,a.asset_list.name,a.category,a.get_status_display(),a.serial_number,a.assigned_to,a.factory,a.department,a.location,a.purchase_date,a.purchase_value,a.purchase_currency,a.warranty_expires]])
     return response
 
 @login_required
@@ -184,7 +206,7 @@ def lists(request):
     if not can_manage_lists(request.user): raise PermissionDenied
     form=AssetListForm(request.POST or None)
     if request.method=='POST' and form.is_valid():
-        item=form.save(); messages.success(request,f'List “{item.name}” created.'); return redirect('list_manage',pk=item.pk)
+        item=form.save(); messages.success(request,f'Access Group “{item.name}” created.'); return redirect('list_manage',pk=item.pk)
     return render(request,'inventory/lists.html',{'form':form,'asset_lists':AssetList.objects.prefetch_related('memberships').all()})
 
 @login_required
@@ -198,15 +220,15 @@ def list_manage(request,pk):
         action=request.POST.get('action')
         if action=='details':
             details=AssetListForm(request.POST,instance=item,prefix='details')
-            if details.is_valid(): details.save(); messages.success(request,'List details saved.'); return redirect('list_manage',pk=pk)
+            if details.is_valid(): details.save(); messages.success(request,'Access Group details saved.'); return redirect('list_manage',pk=pk)
         elif action=='member':
             member=MembershipForm(request.POST,prefix='member')
             if member.is_valid():
                 data=member.cleaned_data; Membership.objects.update_or_create(asset_list=item,user=data['user'],defaults={'role':data['role']})
-                messages.success(request,'List access saved.'); return redirect('list_manage',pk=pk)
+                messages.success(request,'Access Group permission saved.'); return redirect('list_manage',pk=pk)
         elif action=='remove':
             membership=get_object_or_404(item.memberships,pk=request.POST.get('membership'))
-            membership.delete(); messages.success(request,'List access removed.'); return redirect('list_manage',pk=pk)
+            membership.delete(); messages.success(request,'Access Group permission removed.'); return redirect('list_manage',pk=pk)
     return render(request,'inventory/list_manage.html',{'asset_list':item,'details_form':details,'member_form':member,'memberships':item.memberships.select_related('user').order_by('user__username')})
 
 @login_required

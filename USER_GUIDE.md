@@ -1,6 +1,6 @@
 # Assetdesk user guide
 
-Version 1.2.0
+Version 26.10
 
 Assetdesk is a private web application for recording any type of organizational product or asset. It combines a flexible asset register with role- and list-based access, purchase values, spreadsheet imports, private pictures, service records, assignment history, and an activity log.
 
@@ -14,7 +14,7 @@ This guide covers these account types:
 
 ## 1. Roles and access
 
-Access is granted by asset list. A list can represent a department, site, company, security boundary, or other grouping such as “Head Office,” “Finance,” or “Warehouse.”
+Access is granted by Access Group. Most records use the default **General Assets** group automatically. Additional groups should be used only as security boundaries, such as Finance, HR, Security, customer-owned equipment, or confidential projects. Category, factory, department and location organize ordinary operational records.
 
 | Capability | General user (Viewer) | General user (Editor) | Auditor | Accounts | General admin | Super admin |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -126,10 +126,7 @@ Editors and administrators can import `.xlsx` or `.csv` files. Each import place
 
 ### Prepare the spreadsheet
 
-Use the first row for column headings. These two columns are required:
-
-- **Tag**
-- **Asset** or **Name**
+Use the first row for column headings. Only **Asset** or **Name** is required. **Tag** is optional: supplied tags are preserved, while missing tags can be generated automatically using the prefix selected on the import screen.
 
 Supported optional headings are:
 
@@ -159,11 +156,13 @@ Use real spreadsheet date cells where possible. Text dates may use `YYYY-MM-DD`,
 ### Run the import
 
 1. Select **Import spreadsheet** from the Asset register.
-2. Choose the destination list.
+2. Choose the destination Access Group.
 3. Select the `.xlsx` or `.csv` file.
-4. Select **Import assets**.
+4. Choose whether missing tags should be generated or rejected.
+5. When generating tags, enter a prefix such as `MCH`, `TOOL`, or `SAFE`.
+6. Select **Import assets**.
 
-Every imported asset receives an “Imported from spreadsheet” activity entry. The import is all-or-nothing: a missing required value, invalid date, or duplicate tag stops the import and prevents partial rows from being saved. Correct the indicated row and upload the file again.
+Every imported asset receives an “Imported from spreadsheet” activity entry. Generated tags use six-digit sequences, such as `MCH-000001`, continuing after the highest existing tag with the same prefix. The import is all-or-nothing: a missing name, invalid value, duplicate supplied tag, or other invalid row stops the import and prevents partial rows from being saved.
 
 For assigned rows, include an Assigned to value. Review the imported records after a large import, especially categories, statuses, and dates.
 

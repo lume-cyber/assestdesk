@@ -1,16 +1,30 @@
 from django import forms
 from django.contrib.auth import password_validation
 from django.contrib.auth.models import User
-from .models import Asset, AssetList, Membership, UserProfile
+from .models import Asset, AssetList, Membership, ProductCategory, UserProfile
 from .access import permitted_lists
 class AssetForm(forms.ModelForm):
+    restricted_access = forms.BooleanField(required=False, label='Restricted access', help_text='Select only when this record must use a special access group.')
+    category = forms.ChoiceField()
+    custom_category = forms.CharField(required=False, max_length=150, label='Custom category', help_text='Use only when no standard category fits.')
     class Meta:
         model = Asset
-        fields = ['tag','name','asset_list','category','status','manufacturer','model','serial_number','assigned_to','location','purchase_date','purchase_value','purchase_currency','warranty_expires','notes']
-        widgets = {'category':forms.TextInput(attrs={'list':'product-categories'}),'purchase_date':forms.DateInput(attrs={'type':'date'}),'warranty_expires':forms.DateInput(attrs={'type':'date'}),'notes':forms.Textarea(attrs={'rows':4})}
+        fields = ['tag','name','category','status','manufacturer','model','serial_number','assigned_to','factory','department','location','purchase_date','purchase_value','purchase_currency','warranty_expires','notes','asset_list']
+        widgets = {'purchase_date':forms.DateInput(attrs={'type':'date'}),'warranty_expires':forms.DateInput(attrs={'type':'date'}),'notes':forms.Textarea(attrs={'rows':4})}
     def __init__(self,*args,user,**kwargs):
         super().__init__(*args,**kwargs)
         self.fields['asset_list'].queryset = permitted_lists(user,write=True)
+        self.fields['asset_list'].required = False
+        choices=[(item.path,item.path) for item in ProductCategory.objects.filter(active=True)]
+        for label in Asset.CATEGORY_SUGGESTIONS + ['Laptop','Desktop','Monitor','Server','Network equipment','Printer','Phone']:
+            if label not in dict(choices): choices.append((label,label))
+        current=self.instance.category if self.instance and self.instance.pk else ''
+        if current and current not in dict(choices): choices.insert(0,(current,current))
+        self.fields['category'].choices=[('', 'Select a standard category')] + choices + [('__custom__','Custom category…')]
+        if self.instance and self.instance.pk:
+            default=AssetList.objects.filter(is_default=True).first()
+            self.fields['restricted_access'].initial=not default or self.instance.asset_list_id != default.pk
+        self.order_fields(['tag','name','category','custom_category','status','manufacturer','model','serial_number','assigned_to','factory','department','location','purchase_date','purchase_value','purchase_currency','warranty_expires','notes','restricted_access','asset_list'])
     def validate_unique(self):
         # Never disclose which hidden list owns a duplicate asset tag.
         super().validate_unique()
@@ -18,6 +32,16 @@ class AssetForm(forms.ModelForm):
             self.errors['tag'] = self.error_class(['This asset tag cannot be used. Choose another tag.'])
     def clean(self):
         data = super().clean()
+        if data.get('category') == '__custom__':
+            if not data.get('custom_category'): self.add_error('custom_category','Enter the custom category.')
+            else: data['category']=data['custom_category'].strip()
+        if not data.get('restricted_access'):
+            default=AssetList.objects.filter(is_default=True).first()
+            if not default: self.add_error('restricted_access','A default access group has not been configured.')
+            elif default not in self.fields['asset_list'].queryset: self.add_error('restricted_access','You do not have permission to create assets in the default access group.')
+            else: data['asset_list']=default
+        elif not data.get('asset_list'):
+            self.add_error('asset_list','Choose an access group for restricted access.')
         if data.get('status') == 'assigned' and not data.get('assigned_to'):
             self.add_error('assigned_to','Enter the employee holding this asset.')
         if data.get('purchase_date') and data.get('warranty_expires') and data['warranty_expires'] < data['purchase_date']:

@@ -4,7 +4,7 @@ from django.urls import path
 from inventory import views
 admin.site.site_header = 'Assetdesk administration'
 admin.site.site_title = 'Assetdesk'
-admin.site.index_title = 'Accounts, lists and permissions'
+admin.site.index_title = 'Accounts, Access Groups and permissions'
 admin.site.has_permission = lambda request: request.user.is_active and request.user.is_superuser
 urlpatterns = [
  path('admin/',admin.site.urls),

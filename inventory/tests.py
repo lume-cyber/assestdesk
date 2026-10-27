@@ -1,4 +1,5 @@
 from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, Client, override_settings
 from .models import AssetList, Asset, Membership, AssetEvent, UserProfile
 from .access import permitted_lists
@@ -17,7 +18,7 @@ class AccessTests(TestCase):
         self.a = Asset.objects.create(asset_list=self.public,tag='IT-001',name='Office laptop')
         self.b = Asset.objects.create(asset_list=self.secret,tag='FIN-001',name='Secret laptop')
     def payload(self,**kwargs):
-        return dict(tag='IT-002',name='New laptop',asset_list=self.public.pk,category='Laptop',status='available',**kwargs)
+        return dict(tag='IT-002',name='New laptop',asset_list=self.public.pk,category='Laptop',status='available',restricted_access='on',**kwargs)
     def test_anonymous_is_redirected(self):
         for path in ['/',f'/assets/{self.a.pk}/','/assets/export/','/assets/new/']:
             self.assertEqual(self.client.get(path).status_code,302)
@@ -159,3 +160,23 @@ class RoleAndListTests(TestCase):
         data={'tag':'APP-1','name':'Winter coat','asset_list':self.list.pk,'category':'Apparel & Accessories','status':'available','purchase_value':'120.00','purchase_currency':'CAD'}
         self.assertEqual(self.client.post('/assets/new/',data).status_code,302)
         asset=Asset.objects.get(tag='APP-1'); self.assertEqual(asset.category,'Apparel & Accessories'); self.assertEqual(str(asset.purchase_value),'120.00')
+    def test_default_access_group_and_preloaded_factory_categories(self):
+        from .models import ProductCategory
+        default=AssetList.objects.get(is_default=True)
+        self.assertEqual(default.name,'General Assets')
+        self.assertTrue(ProductCategory.objects.filter(source='shopify',path__contains='Backpacks').exists())
+        self.assertTrue(ProductCategory.objects.filter(source='internal',path__contains='Bartack Machine').exists())
+        self.client.force_login(self.general_admin)
+        self.assertContains(self.client.get('/assets/new/'),'id="category-search"')
+        data={'tag':'MCH-1','name':'Bartack 01','category':'Production Machinery > Sewing > Bartack Machine','status':'available','factory':'Unit 1','department':'Sewing'}
+        self.assertEqual(self.client.post('/assets/new/',data).status_code,302)
+        asset=Asset.objects.get(tag='MCH-1'); self.assertEqual(asset.asset_list,default); self.assertEqual(asset.factory,'Unit 1')
+    def test_import_generates_missing_tags_and_preserves_supplied_tags(self):
+        self.client.force_login(self.general_admin)
+        content=b'Name,Tag,Category\nLockstitch machine,,Production Machinery\nBackpack sample,BAG-EXISTING,Backpacks\nOverlock machine,,Production Machinery\n'
+        upload=SimpleUploadedFile('assets.csv',content,content_type='text/csv')
+        response=self.client.post('/assets/import/',{'asset_list':self.list.pk,'missing_tags':'generate','tag_prefix':'MCH','file':upload})
+        self.assertEqual(response.status_code,302)
+        self.assertTrue(Asset.objects.filter(tag='MCH-000001',name='Lockstitch machine').exists())
+        self.assertTrue(Asset.objects.filter(tag='MCH-000002',name='Overlock machine').exists())
+        self.assertTrue(Asset.objects.filter(tag='BAG-EXISTING',name='Backpack sample').exists())
